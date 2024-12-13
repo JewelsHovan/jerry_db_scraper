@@ -1,0 +1,7 @@
+requests
+aiohttp
+asyncio
+tqdm
+bs4
+logging
+urllib
