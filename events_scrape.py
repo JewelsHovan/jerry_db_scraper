@@ -12,6 +12,8 @@ from typing import Dict, Any
 import copy
 from tqdm import tqdm
 import logging
+import os
+from datetime import datetime
 
 logging.basicConfig(
     level=logging.INFO,
@@ -97,22 +99,34 @@ async def extract_event_data(session: aiohttp.ClientSession, url: str) -> Dict[s
         logging.error(f"Error processing {url}: {str(e)}")
         return None
 
-async def process_events_data(input_file: str, output_file: str, max_concurrent: int = 10, delay_before_request: float = 0.2) -> None:
+async def process_events_data(input_file: str, output_file: str, max_concurrent: int = 10, delay_before_request: float = 0.2, checkpoint_interval: int = 500) -> None:
     """
-    Asynchronously process all events with a progress bar
+    Asynchronously process all events with a progress bar and checkpointing
     
     Args:
         input_file: Path to input JSON file
         output_file: Path to output JSON file
         max_concurrent: Maximum number of concurrent requests
+        delay_before_request: Delay between requests
+        checkpoint_interval: Number of events to process before saving checkpoint
     """
-    # Load original JSON data
-    with open(input_file, 'r') as f:
-        data = json.load(f)
+    # Create checkpoints directory if it doesn't exist
+    checkpoint_dir = "checkpoints"
+    os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # Create deep copy to modify
-    updated_data = copy.deepcopy(data)
+    # Load from latest checkpoint if exists, otherwise load original data
+    checkpoint_files = sorted([f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_')])
     
+    if checkpoint_files:
+        latest_checkpoint = os.path.join(checkpoint_dir, checkpoint_files[-1])
+        logging.info(f"Loading from checkpoint: {latest_checkpoint}")
+        with open(latest_checkpoint, 'r') as f:
+            updated_data = json.load(f)
+    else:
+        with open(input_file, 'r') as f:
+            data = json.load(f)
+        updated_data = copy.deepcopy(data)
+
     # Create semaphore for rate limiting
     semaphore = asyncio.Semaphore(max_concurrent)
     
@@ -129,16 +143,35 @@ async def process_events_data(input_file: str, output_file: str, max_concurrent:
         # Create progress bar
         pbar = tqdm(total=len(events_to_process), desc="Processing events")
         
+        processed_count = 0
+        
         # Process events with semaphore
         async def process_event(year: str, index: int, event: Dict[str, Any]):
+            nonlocal processed_count
             async with semaphore:
                 try:
-                    # add a delay before each request
                     await asyncio.sleep(delay_before_request)
-
                     detailed_data = await extract_event_data(session, event['url'])
                     if detailed_data:
                         updated_data[year][index] = {**event, **detailed_data}
+                    
+                    processed_count += 1
+                    
+                    # Save checkpoint every checkpoint_interval events
+                    if processed_count % checkpoint_interval == 0:
+                        checkpoint_file = os.path.join(
+                            checkpoint_dir, 
+                            f'checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                        )
+                        logging.info(f"Saving checkpoint after {processed_count} events: {checkpoint_file}")
+                        with open(checkpoint_file, 'w') as f:
+                            json.dump(updated_data, f, indent=2)
+                        
+                        # Remove old checkpoints (keep last 3)
+                        checkpoint_files = sorted([f for f in os.listdir(checkpoint_dir) if f.startswith('checkpoint_')])
+                        for old_checkpoint in checkpoint_files[:-3]:
+                            os.remove(os.path.join(checkpoint_dir, old_checkpoint))
+                            
                 except Exception as e:
                     logging.error(f"Failed to process {event['url']}: {str(e)}")
                 finally:
@@ -165,9 +198,14 @@ def main():
     # scrape params
     MAX_CONCURRENT = 10
     DELAY_BEFORE_REQUEST = 0.2
+    CHECKPOINT_INTERVAL = 1000
     
     # Run async process
-    asyncio.run(process_events_data(input_file, output_file, max_concurrent=MAX_CONCURRENT, delay_before_request=DELAY_BEFORE_REQUEST))
+    asyncio.run(process_events_data(input_file, 
+                                    output_file, 
+                                    max_concurrent=MAX_CONCURRENT, 
+                                    delay_before_request=DELAY_BEFORE_REQUEST, 
+                                    checkpoint_interval=CHECKPOINT_INTERVAL))
 
 if __name__ == "__main__":
     main()

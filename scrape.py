@@ -112,7 +112,7 @@ if __name__ == "__main__":
             events = get_event_links_for_year(year)
             all_event_data[year] = events
             print(f"Found {len(events)} events for {year}")
-            time.sleep(0.2)  # Add a delay to avoid overwhelming the server
+            time.sleep(0.5)  # Add a delay to avoid overwhelming the server
             
         # Save results to JSON file
         with open(output_file, 'w', encoding='utf-8') as f:
