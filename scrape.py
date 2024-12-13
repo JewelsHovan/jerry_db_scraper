@@ -96,6 +96,7 @@ if __name__ == "__main__":
     # PARAMS
     base_url = "https://jerrybase.com/events"
     output_file = "event_data.json"  # Changed to .json extension
+    TESTING = False
 
     # Execute and print results
     try:
@@ -105,7 +106,7 @@ if __name__ == "__main__":
         # Fetch event data for each year
         all_event_data = {}
         for i, year in enumerate(years):
-            if i >= 5:
+            if TESTING and i >= 5:
                 break  # Limit to 5 iterations for testing
             print(f"Fetching events for {year}...")
             events = get_event_links_for_year(year)
