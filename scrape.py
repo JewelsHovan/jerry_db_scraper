@@ -3,6 +3,7 @@ from urllib.parse import urljoin
 import time
 from bs4 import BeautifulSoup
 import json
+from security import safe_requests
 
 def get_year_options():
     """
@@ -12,7 +13,7 @@ def get_year_options():
         list: List of year values
     """
     # Fetch the webpage
-    response = requests.get(base_url)
+    response = safe_requests.get(base_url)
     response.raise_for_status()  # Raise an exception for bad status codes
     
     # Parse the HTML content
@@ -38,7 +39,7 @@ def get_event_links_for_year(year):
     """
     year_url = f"{base_url}?year={year}"
     print(f"Fetching events for {year} from {year_url}")
-    response = requests.get(year_url)
+    response = safe_requests.get(year_url)
     response.raise_for_status()
     
     return extract_links_from_html(response.text, base_url)
